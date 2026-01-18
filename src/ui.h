@@ -6,8 +6,12 @@
 #include "jobs.h"
 
 typedef enum {
-    VIEW_PRINTERS,
-    VIEW_JOBS,
+    PANEL_PRINTERS,
+    PANEL_JOBS
+} panel_t;
+
+typedef enum {
+    VIEW_MAIN,
     VIEW_DISCOVER
 } view_t;
 
@@ -24,6 +28,7 @@ typedef struct {
     WINDOW *status;
 
     view_t current_view;
+    panel_t active_panel;
     printer_list_t printers;
     job_list_t jobs;
 

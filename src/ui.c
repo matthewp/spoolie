@@ -8,19 +8,17 @@
 
 static void draw_header(ui_state_t *state) {
     werase(state->header);
-    wattron(state->header, A_REVERSE);
+    wbkgd(state->header, COLOR_PAIR(4));
 
     int width = getmaxx(state->header);
-    for (int i = 0; i < width; i++) {
-        mvwaddch(state->header, 0, i, ' ');
-    }
 
+    wattron(state->header, A_BOLD);
     mvwprintw(state->header, 0, 1, "spoolie");
+    wattroff(state->header, A_BOLD);
 
-    const char *tabs = "[P]rinters  [J]obs  [A]dd  [Q]uit";
+    const char *tabs = "[A]dd  [Q]uit";
     mvwprintw(state->header, 0, width - strlen(tabs) - 1, "%s", tabs);
 
-    wattroff(state->header, A_REVERSE);
     wrefresh(state->header);
 }
 
@@ -32,11 +30,12 @@ static void draw_footer(ui_state_t *state) {
 
     const char *help;
     switch (state->current_view) {
-        case VIEW_PRINTERS:
-            help = "j/k:navigate  Enter:set default  d:delete  r:refresh  q:quit";
-            break;
-        case VIEW_JOBS:
-            help = "j/k:navigate  c:cancel job  r:refresh  q:quit";
+        case VIEW_MAIN:
+            if (state->active_panel == PANEL_PRINTERS) {
+                help = "Tab:switch  j/k:nav  Enter:default  d:delete  a:add  r:refresh  q:quit";
+            } else {
+                help = "Tab:switch  j/k:nav  c:cancel  r:refresh  q:quit";
+            }
             break;
         case VIEW_DISCOVER:
             help = "j/k:navigate  Enter:add printer  Esc:cancel";
@@ -55,93 +54,114 @@ static void draw_footer(ui_state_t *state) {
     wrefresh(state->footer);
 }
 
-static void draw_printers(ui_state_t *state) {
+static void draw_panel_box(WINDOW *win, int y, int height, int width,
+                           const char *title, int active) {
+    int color = active ? 2 : 3;  /* Green if active, white if not */
+
+    wattron(win, COLOR_PAIR(color));
+
+    /* Draw box borders */
+    mvwhline(win, y, 0, ACS_HLINE, width);
+    mvwhline(win, y + height - 1, 0, ACS_HLINE, width);
+    mvwvline(win, y, 0, ACS_VLINE, height);
+    mvwvline(win, y, width - 1, ACS_VLINE, height);
+
+    /* Corners */
+    mvwaddch(win, y, 0, ACS_ULCORNER);
+    mvwaddch(win, y, width - 1, ACS_URCORNER);
+    mvwaddch(win, y + height - 1, 0, ACS_LLCORNER);
+    mvwaddch(win, y + height - 1, width - 1, ACS_LRCORNER);
+
+    /* Title */
+    if (active) wattron(win, A_BOLD);
+    mvwprintw(win, y, 2, " %s ", title);
+    if (active) wattroff(win, A_BOLD);
+
+    wattroff(win, COLOR_PAIR(color));
+}
+
+static void draw_main_panels(ui_state_t *state) {
     werase(state->main);
 
     int width = getmaxx(state->main);
+    int height = getmaxy(state->main);
 
-    wattron(state->main, A_BOLD);
-    mvwprintw(state->main, 0, 1, "PRINTERS");
-    wattroff(state->main, A_BOLD);
-    mvwhline(state->main, 1, 0, ACS_HLINE, width);
+    int printers_height = height / 2;
+    int jobs_height = height - printers_height;
+
+    /* Draw printers panel */
+    int printers_active = (state->active_panel == PANEL_PRINTERS);
+    draw_panel_box(state->main, 0, printers_height, width, "Printers", printers_active);
 
     if (state->printers.count == 0) {
-        mvwprintw(state->main, 3, 2, "No printers configured");
+        mvwprintw(state->main, 2, 2, "No printers configured");
     } else {
-        for (int i = 0; i < state->printers.count; i++) {
+        int max_items = printers_height - 2;
+        int inner_width = width - 2;  /* Space inside the box */
+        for (int i = 0; i < state->printers.count && i < max_items; i++) {
             printer_info_t *p = &state->printers.items[i];
+            int y = i + 1;
 
-            int y = i + 2;
-
-            if (i == state->printers.selected) {
+            if (i == state->printers.selected && printers_active) {
                 wattron(state->main, A_REVERSE);
+                /* Fill the entire row */
+                mvwhline(state->main, y, 1, ' ', inner_width);
             }
 
-            /* Clear the line */
-            mvwhline(state->main, y, 0, ' ', width);
-
-            /* Printer name */
-            mvwprintw(state->main, y, 1, "%c %s",
-                      i == state->printers.selected ? '>' : ' ',
+            mvwprintw(state->main, y, 2, "%c %-20.20s",
+                      (i == state->printers.selected && printers_active) ? '>' : ' ',
                       p->name);
 
-            /* Default marker */
             if (p->is_default) {
                 wprintw(state->main, " (default)");
             }
 
-            /* State */
-            mvwprintw(state->main, y, 40, "%s", p->state);
+            int state_col = width / 2;
+            mvwprintw(state->main, y, state_col, "%-10.10s", p->state);
 
-            /* Model (truncated) */
             if (p->make_model[0]) {
-                char model[30];
-                strncpy(model, p->make_model, sizeof(model) - 1);
-                model[sizeof(model) - 1] = '\0';
-                mvwprintw(state->main, y, 55, "%s", model);
+                int model_col = state_col + 12;
+                int model_max = width - model_col - 2;
+                if (model_max > 0) {
+                    mvwprintw(state->main, y, model_col, "%.*s", model_max, p->make_model);
+                }
             }
 
-            if (i == state->printers.selected) {
+            if (i == state->printers.selected && printers_active) {
                 wattroff(state->main, A_REVERSE);
             }
         }
     }
 
-    wrefresh(state->main);
-}
-
-static void draw_jobs(ui_state_t *state) {
-    werase(state->main);
-
-    int width = getmaxx(state->main);
-
-    wattron(state->main, A_BOLD);
-    mvwprintw(state->main, 0, 1, "PRINT QUEUE");
-    wattroff(state->main, A_BOLD);
-    mvwhline(state->main, 1, 0, ACS_HLINE, width);
+    /* Draw jobs panel */
+    int jobs_active = (state->active_panel == PANEL_JOBS);
+    draw_panel_box(state->main, printers_height, jobs_height, width, "Jobs", jobs_active);
 
     if (state->jobs.count == 0) {
-        mvwprintw(state->main, 3, 2, "No active print jobs");
+        mvwprintw(state->main, printers_height + 2, 2, "No active print jobs");
     } else {
-        /* Header */
-        mvwprintw(state->main, 2, 1, "  %-6s %-20s %-30s %-10s",
-                  "ID", "Printer", "Title", "State");
-
-        for (int i = 0; i < state->jobs.count; i++) {
+        int max_items = jobs_height - 2;
+        int inner_width = width - 2;
+        for (int i = 0; i < state->jobs.count && i < max_items; i++) {
             job_info_t *j = &state->jobs.items[i];
+            int y = printers_height + 1 + i;
 
-            int y = i + 3;
-
-            if (i == state->jobs.selected) {
+            if (i == state->jobs.selected && jobs_active) {
                 wattron(state->main, A_REVERSE);
+                mvwhline(state->main, y, 1, ' ', inner_width);
             }
 
-            mvwhline(state->main, y, 0, ' ', width);
-            mvwprintw(state->main, y, 1, "%c %-6d %-20.20s %-30.30s %-10s",
-                      i == state->jobs.selected ? '>' : ' ',
-                      j->id, j->printer, j->title, j->state);
+            /* Calculate column widths based on available space */
+            int avail = inner_width - 4;  /* minus selector and padding */
+            mvwprintw(state->main, y, 2, "%c %-6d %-15.15s %.*s",
+                      (i == state->jobs.selected && jobs_active) ? '>' : ' ',
+                      j->id, j->printer,
+                      avail - 25 > 0 ? avail - 25 : 10, j->title);
 
-            if (i == state->jobs.selected) {
+            /* State on the right */
+            mvwprintw(state->main, y, width - 12, "%-10.10s", j->state);
+
+            if (i == state->jobs.selected && jobs_active) {
                 wattroff(state->main, A_REVERSE);
             }
         }
@@ -194,7 +214,10 @@ void ui_init(ui_state_t *state) {
     /* Initialize colors */
     start_color();
     use_default_colors();
-    init_pair(1, COLOR_BLUE, -1);  /* Blue on default background */
+    init_pair(1, COLOR_BLUE, -1);    /* Blue on default background (footer) */
+    init_pair(2, COLOR_GREEN, -1);   /* Green for active panel border */
+    init_pair(3, COLOR_WHITE, -1);   /* Dim white for inactive panel border */
+    init_pair(4, COLOR_WHITE, COLOR_BLUE);  /* Header: white on blue */
 
     refresh();  /* Must refresh stdscr before subwindows will display */
 
@@ -207,7 +230,8 @@ void ui_init(ui_state_t *state) {
                          HEADER_HEIGHT, 0);
     state->footer = newwin(FOOTER_HEIGHT, width, height - FOOTER_HEIGHT, 0);
 
-    state->current_view = VIEW_PRINTERS;
+    state->current_view = VIEW_MAIN;
+    state->active_panel = PANEL_PRINTERS;
     state->status_msg[0] = '\0';
     state->running = 1;
 
@@ -294,11 +318,8 @@ void ui_draw(ui_state_t *state) {
     draw_header(state);
 
     switch (state->current_view) {
-        case VIEW_PRINTERS:
-            draw_printers(state);
-            break;
-        case VIEW_JOBS:
-            draw_jobs(state);
+        case VIEW_MAIN:
+            draw_main_panels(state);
             break;
         case VIEW_DISCOVER:
             draw_discover(state);
@@ -343,10 +364,6 @@ static void handle_printers_input(ui_state_t *state, int ch) {
                 state->modal = MODAL_CONFIRM_DELETE;
             }
             break;
-        case 'r':
-            printer_list_refresh(&state->printers);
-            ui_set_status(state, "Refreshed");
-            break;
     }
 }
 
@@ -367,10 +384,6 @@ static void handle_jobs_input(ui_state_t *state, int ch) {
                          "Cancel job %d '%s'?", j->id, j->title);
                 state->modal = MODAL_CONFIRM_CANCEL_JOB;
             }
-            break;
-        case 'r':
-            job_list_refresh(&state->jobs);
-            ui_set_status(state, "Refreshed");
             break;
     }
 }
@@ -399,7 +412,7 @@ static void handle_discover_input(ui_state_t *state, int ch) {
                     ui_set_status(state, "Failed to add printer");
                 }
                 /* Return to printers view */
-                state->current_view = VIEW_PRINTERS;
+                state->current_view = VIEW_MAIN;
                 free_discovered(state->discover_uris, state->discover_names,
                                 state->discover_count);
                 state->discover_uris = NULL;
@@ -408,7 +421,7 @@ static void handle_discover_input(ui_state_t *state, int ch) {
             }
             break;
         case 27: /* Escape */
-            state->current_view = VIEW_PRINTERS;
+            state->current_view = VIEW_MAIN;
             if (state->discover_uris) {
                 free_discovered(state->discover_uris, state->discover_names,
                                 state->discover_count);
@@ -464,7 +477,7 @@ void ui_handle_input(ui_state_t *state, int ch) {
         case 'q':
         case 'Q':
             if (state->current_view == VIEW_DISCOVER) {
-                state->current_view = VIEW_PRINTERS;
+                state->current_view = VIEW_MAIN;
                 if (state->discover_uris) {
                     free_discovered(state->discover_uris, state->discover_names,
                                     state->discover_count);
@@ -476,17 +489,10 @@ void ui_handle_input(ui_state_t *state, int ch) {
                 state->running = 0;
             }
             return;
-        case 'p':
-        case 'P':
-            if (state->current_view != VIEW_DISCOVER) {
-                state->current_view = VIEW_PRINTERS;
-            }
-            return;
-        case 'j' + 128: /* Alt-j - doesn't work well, use J */
-        case 'J':
-            if (state->current_view != VIEW_DISCOVER) {
-                state->current_view = VIEW_JOBS;
-                job_list_refresh(&state->jobs);
+        case '\t':  /* Tab to switch panels */
+            if (state->current_view == VIEW_MAIN) {
+                state->active_panel = (state->active_panel == PANEL_PRINTERS)
+                    ? PANEL_JOBS : PANEL_PRINTERS;
             }
             return;
         case 'a':
@@ -501,15 +507,24 @@ void ui_handle_input(ui_state_t *state, int ch) {
                 }
             }
             return;
+        case 'r':
+        case 'R':
+            if (state->current_view == VIEW_MAIN) {
+                printer_list_refresh(&state->printers);
+                job_list_refresh(&state->jobs);
+                ui_set_status(state, "Refreshed");
+            }
+            return;
     }
 
     /* View-specific keys */
     switch (state->current_view) {
-        case VIEW_PRINTERS:
-            handle_printers_input(state, ch);
-            break;
-        case VIEW_JOBS:
-            handle_jobs_input(state, ch);
+        case VIEW_MAIN:
+            if (state->active_panel == PANEL_PRINTERS) {
+                handle_printers_input(state, ch);
+            } else {
+                handle_jobs_input(state, ch);
+            }
             break;
         case VIEW_DISCOVER:
             handle_discover_input(state, ch);
