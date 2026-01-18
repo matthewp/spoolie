@@ -8,10 +8,17 @@ int main(void) {
     ui_state_t state;
     ui_init(&state);
 
+    /* Use timeout so getch doesn't block - allows polling for async ops */
+    timeout(100);
+
     while (state.running) {
         ui_draw(&state);
+        ui_poll(&state);
         int ch = getch();
-        if (ch == KEY_RESIZE) {
+        if (ch == ERR) {
+            /* Timeout - no input, just continue loop */
+            continue;
+        } else if (ch == KEY_RESIZE) {
             /* ncurses handles SIGWINCH internally and returns KEY_RESIZE */
             ui_resize(&state);
         } else {

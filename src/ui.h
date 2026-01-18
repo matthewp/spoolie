@@ -2,6 +2,7 @@
 #define UI_H
 
 #include <ncurses.h>
+#include <pthread.h>
 #include "printers.h"
 #include "jobs.h"
 
@@ -37,6 +38,7 @@ typedef struct {
     char **discover_names;
     int discover_count;
     int discover_selected;
+    int discover_generation;  /* Incremented each discovery, used to ignore stale results */
 
     /* Modal state */
     modal_t modal;
@@ -50,6 +52,7 @@ void ui_init(ui_state_t *state);
 void ui_cleanup(ui_state_t *state);
 void ui_resize(ui_state_t *state);
 void ui_draw(ui_state_t *state);
+void ui_poll(ui_state_t *state);
 void ui_handle_input(ui_state_t *state, int ch);
 void ui_set_status(ui_state_t *state, const char *fmt, ...);
 

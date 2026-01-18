@@ -1,10 +1,49 @@
 #include "ui.h"
+#include "cups_api.h"
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define HEADER_HEIGHT 1
 #define FOOTER_HEIGHT 2
+
+/* Args passed to discovery thread */
+typedef struct {
+    ui_state_t *state;
+    int generation;
+} discover_args_t;
+
+/* Thread function for async printer discovery */
+static void *discover_thread_func(void *arg) {
+    discover_args_t *args = (discover_args_t *)arg;
+    ui_state_t *state = args->state;
+    int generation = args->generation;
+    free(args);
+
+    char **uris = NULL;
+    char **names = NULL;
+    int count = discover_printers(&uris, &names);
+
+    /* Only update state if this discovery is still current */
+    if (state->discover_generation == generation) {
+        /* Free any previous results */
+        if (state->discover_uris) {
+            free_discovered(state->discover_uris, state->discover_names,
+                            state->discover_count);
+        }
+        state->discover_uris = uris;
+        state->discover_names = names;
+        state->discover_count = count;
+    } else {
+        /* Stale discovery - free results */
+        if (uris) {
+            free_discovered(uris, names, count);
+        }
+    }
+
+    return NULL;
+}
 
 static void draw_header(ui_state_t *state) {
     werase(state->header);
@@ -16,7 +55,7 @@ static void draw_header(ui_state_t *state) {
     mvwprintw(state->header, 0, 1, "spoolie");
     wattroff(state->header, A_BOLD);
 
-    const char *tabs = "[A]dd  [Q]uit";
+    const char *tabs = "[Q]uit";
     mvwprintw(state->header, 0, width - strlen(tabs) - 1, "%s", tabs);
 
     wrefresh(state->header);
@@ -38,7 +77,7 @@ static void draw_footer(ui_state_t *state) {
             }
             break;
         case VIEW_DISCOVER:
-            help = "j/k:navigate  Enter:add printer  Esc:cancel";
+            help = "j/k:navigate  Enter:add printer  q:cancel";
             break;
     }
     wattron(state->footer, COLOR_PAIR(1));
@@ -180,7 +219,9 @@ static void draw_discover(ui_state_t *state) {
     wattroff(state->main, A_BOLD);
     mvwhline(state->main, 1, 0, ACS_HLINE, width);
 
-    if (state->discover_count == 0) {
+    if (state->discover_count < 0) {
+        mvwprintw(state->main, 3, 2, "Discovering printers...");
+    } else if (state->discover_count == 0) {
         mvwprintw(state->main, 3, 2, "No network printers found");
     } else {
         for (int i = 0; i < state->discover_count; i++) {
@@ -239,6 +280,7 @@ void ui_init(ui_state_t *state) {
     state->discover_names = NULL;
     state->discover_count = 0;
     state->discover_selected = 0;
+    state->discover_generation = 0;
 
     state->modal = MODAL_NONE;
     state->modal_msg[0] = '\0';
@@ -251,6 +293,9 @@ void ui_init(ui_state_t *state) {
 }
 
 void ui_cleanup(ui_state_t *state) {
+    /* Invalidate any running discovery threads */
+    state->discover_generation = -1;
+
     delwin(state->header);
     delwin(state->main);
     delwin(state->footer);
@@ -264,6 +309,14 @@ void ui_cleanup(ui_state_t *state) {
     }
 
     endwin();
+}
+
+void ui_poll(ui_state_t *state) {
+    /* Check if discovery finished with no results */
+    if (state->current_view == VIEW_DISCOVER &&
+        state->discover_count == 0 && state->status_msg[0] == '\0') {
+        ui_set_status(state, "No network printers found");
+    }
 }
 
 void ui_resize(ui_state_t *state) {
@@ -414,8 +467,9 @@ static void handle_discover_input(ui_state_t *state, int ch) {
                 } else {
                     ui_set_status(state, "Failed to add printer");
                 }
-                /* Return to printers view */
+                /* Return to main view and clean up */
                 state->current_view = VIEW_MAIN;
+                state->discover_generation++;
                 free_discovered(state->discover_uris, state->discover_names,
                                 state->discover_count);
                 state->discover_uris = NULL;
@@ -425,13 +479,7 @@ static void handle_discover_input(ui_state_t *state, int ch) {
             break;
         case 27: /* Escape */
             state->current_view = VIEW_MAIN;
-            if (state->discover_uris) {
-                free_discovered(state->discover_uris, state->discover_names,
-                                state->discover_count);
-                state->discover_uris = NULL;
-                state->discover_names = NULL;
-                state->discover_count = 0;
-            }
+            state->discover_generation++;
             break;
     }
 }
@@ -481,13 +529,8 @@ void ui_handle_input(ui_state_t *state, int ch) {
         case 'Q':
             if (state->current_view == VIEW_DISCOVER) {
                 state->current_view = VIEW_MAIN;
-                if (state->discover_uris) {
-                    free_discovered(state->discover_uris, state->discover_names,
-                                    state->discover_count);
-                    state->discover_uris = NULL;
-                    state->discover_names = NULL;
-                    state->discover_count = 0;
-                }
+                /* Invalidate any running discovery so its results are discarded */
+                state->discover_generation++;
             } else {
                 state->running = 0;
             }
@@ -502,12 +545,19 @@ void ui_handle_input(ui_state_t *state, int ch) {
         case 'A':
             if (state->current_view != VIEW_DISCOVER) {
                 state->current_view = VIEW_DISCOVER;
-                state->discover_count = discover_printers(
-                    &state->discover_uris, &state->discover_names);
+                state->discover_count = -1;  /* Show loading state */
                 state->discover_selected = 0;
-                if (state->discover_count == 0) {
-                    ui_set_status(state, "No network printers found");
-                }
+                state->discover_generation++;
+                state->status_msg[0] = '\0';
+
+                /* Start discovery in detached thread */
+                discover_args_t *args = malloc(sizeof(discover_args_t));
+                args->state = state;
+                args->generation = state->discover_generation;
+
+                pthread_t thread;
+                pthread_create(&thread, NULL, discover_thread_func, args);
+                pthread_detach(thread);
             }
             return;
         case 'r':

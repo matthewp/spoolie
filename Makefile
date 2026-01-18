@@ -4,7 +4,7 @@ LDFLAGS +=
 
 # pkg-config for deps (works on Linux and FreeBSD)
 CFLAGS += $(shell pkg-config --cflags cups ncursesw 2>/dev/null || pkg-config --cflags cups ncurses)
-LDFLAGS += $(shell pkg-config --libs cups ncursesw 2>/dev/null || pkg-config --libs cups ncurses)
+LDFLAGS += $(shell pkg-config --libs cups ncursesw 2>/dev/null || pkg-config --libs cups ncurses) -lpthread
 
 SRCS = src/main.c src/ui.c src/cups_api.c src/printers.c src/jobs.c
 OBJS = $(SRCS:.c=.o)
