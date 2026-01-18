@@ -272,7 +272,10 @@ void ui_resize(ui_state_t *state) {
     delwin(state->main);
     delwin(state->footer);
 
-    /* ncurses already updated LINES/COLS when KEY_RESIZE was returned */
+    /* Clear screen and get new dimensions */
+    clear();
+    refresh();
+
     int height, width;
     getmaxyx(stdscr, height, width);
 
@@ -282,8 +285,8 @@ void ui_resize(ui_state_t *state) {
                          HEADER_HEIGHT, 0);
     state->footer = newwin(FOOTER_HEIGHT, width, height - FOOTER_HEIGHT, 0);
 
-    /* Force full redraw */
-    clearok(curscr, TRUE);
+    /* Reapply header background color */
+    wbkgd(state->header, COLOR_PAIR(4));
 }
 
 static void draw_modal(ui_state_t *state) {
