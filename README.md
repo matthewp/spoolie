@@ -2,7 +2,7 @@
 
 A friendly terminal UI for managing CUPS printers and print jobs.
 
-![printers view](https://example.com/screenshot.png) <!-- TODO: add screenshot -->
+![printers view](screenshot.png)
 
 ## Features
 
