@@ -62,10 +62,16 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
 
+      - name: Rename binaries
+        run: |
+          mv spoolie-linux-amd64/spoolie spoolie-linux-amd64
+          mv spoolie-macos-arm64/spoolie spoolie-macos-arm64
+          mv spoolie-freebsd-amd64/spoolie-freebsd-amd64 spoolie-freebsd-amd64
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            spoolie-linux-amd64/spoolie
-            spoolie-macos-arm64/spoolie
-            spoolie-freebsd-amd64/spoolie-freebsd-amd64
+            spoolie-linux-amd64
+            spoolie-macos-arm64
+            spoolie-freebsd-amd64
