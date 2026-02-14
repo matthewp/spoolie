@@ -3,6 +3,7 @@
 ## Build
 
 ```bash
+./configure   # detect deps, writes config.mk
 make          # build
 make clean    # clean build artifacts
 ```

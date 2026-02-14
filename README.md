@@ -42,6 +42,7 @@ Pre-built binaries for Linux, macOS, and FreeBSD are available on the [Releases]
 ## Build
 
 ```bash
+./configure
 make
 ```
 

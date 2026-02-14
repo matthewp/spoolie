@@ -2,9 +2,7 @@ CC ?= cc
 CFLAGS += -Wall -Wextra -g
 LDFLAGS +=
 
-# pkg-config for deps; fall back to direct flags for macOS
-PKG_CFLAGS != pkg-config --cflags cups ncursesw 2>/dev/null || pkg-config --cflags cups ncurses 2>/dev/null || true
-PKG_LDFLAGS != pkg-config --libs cups ncursesw 2>/dev/null || pkg-config --libs cups ncurses 2>/dev/null || echo "-lcups -lncurses"
+include config.mk
 CFLAGS += $(PKG_CFLAGS)
 LDFLAGS += $(PKG_LDFLAGS) -lpthread
 

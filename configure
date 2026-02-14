@@ -1,0 +1,32 @@
+#!/bin/sh
+set -e
+
+# Detect CUPS
+if pkg-config --exists cups 2>/dev/null; then
+    CUPS_CFLAGS=$(pkg-config --cflags cups)
+    CUPS_LDFLAGS=$(pkg-config --libs cups)
+else
+    CUPS_CFLAGS=
+    CUPS_LDFLAGS="-lcups"
+fi
+
+# Detect ncurses (prefer ncursesw for UTF-8)
+if pkg-config --exists ncursesw 2>/dev/null; then
+    NCURSES_CFLAGS=$(pkg-config --cflags ncursesw)
+    NCURSES_LDFLAGS=$(pkg-config --libs ncursesw)
+elif pkg-config --exists ncurses 2>/dev/null; then
+    NCURSES_CFLAGS=$(pkg-config --cflags ncurses)
+    NCURSES_LDFLAGS=$(pkg-config --libs ncurses)
+else
+    NCURSES_CFLAGS=
+    NCURSES_LDFLAGS="-lncurses"
+fi
+
+cat > config.mk <<EOF
+PKG_CFLAGS = ${CUPS_CFLAGS} ${NCURSES_CFLAGS}
+PKG_LDFLAGS = ${CUPS_LDFLAGS} ${NCURSES_LDFLAGS}
+EOF
+
+echo "wrote config.mk"
+echo "  CFLAGS: ${CUPS_CFLAGS} ${NCURSES_CFLAGS}"
+echo "  LDFLAGS: ${CUPS_LDFLAGS} ${NCURSES_LDFLAGS}"

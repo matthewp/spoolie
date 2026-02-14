@@ -14,14 +14,14 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcups2-dev libncursesw5-dev
       - name: Build
-        run: make
+        run: ./configure && make
 
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build
-        run: make
+        run: ./configure && make
 
   freebsd:
     runs-on: ubuntu-latest
@@ -34,4 +34,4 @@ jobs:
           prepare: |
             pkg install -y cups pkgconf ncurses
           run: |
-            make
+            ./configure && make
