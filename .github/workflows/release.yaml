@@ -15,24 +15,24 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcups2-dev libncursesw5-dev
       - name: Build
-        run: ./configure && make
+        run: ./configure && make && mv spoolie spoolie-linux-amd64
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoolie-linux-amd64
-          path: spoolie
+          path: spoolie-linux-amd64
 
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build
-        run: ./configure && make
+        run: ./configure && make && mv spoolie spoolie-macos-arm64
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoolie-macos-arm64
-          path: spoolie
+          path: spoolie-macos-arm64
 
   build-freebsd:
     runs-on: ubuntu-latest
@@ -46,14 +46,12 @@ jobs:
           prepare: |
             pkg install -y cups pkgconf ncurses
           run: |
-            ./configure && make
-            mkdir -p release
-            cp spoolie release/spoolie-freebsd-amd64
+            ./configure && make && mv spoolie spoolie-freebsd-amd64
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: spoolie-freebsd-amd64
-          path: release/spoolie-freebsd-amd64
+          path: spoolie-freebsd-amd64
 
   release:
     needs: [build-linux, build-macos, build-freebsd]
@@ -61,12 +59,8 @@ jobs:
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
-
-      - name: Rename binaries
-        run: |
-          mv spoolie-linux-amd64/spoolie spoolie-linux-amd64
-          mv spoolie-macos-arm64/spoolie spoolie-macos-arm64
-          mv spoolie-freebsd-amd64/spoolie-freebsd-amd64 spoolie-freebsd-amd64
+        with:
+          merge-multiple: true
 
       - name: Create release
         uses: softprops/action-gh-release@v2
