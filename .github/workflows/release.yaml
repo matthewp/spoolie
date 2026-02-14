@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcups2-dev libncursesw5-dev
+      - name: Build
+        run: make
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spoolie-linux-amd64
+          path: spoolie
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spoolie-macos-arm64
+          path: spoolie
+
+  build-freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.2"
+          usesh: true
+          prepare: |
+            pkg install -y cups pkgconf ncurses
+          run: |
+            make
+            mkdir -p release
+            cp spoolie release/spoolie-freebsd-amd64
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spoolie-freebsd-amd64
+          path: release/spoolie-freebsd-amd64
+
+  release:
+    needs: [build-linux, build-macos, build-freebsd]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            spoolie-linux-amd64/spoolie
+            spoolie-macos-arm64/spoolie
+            spoolie-freebsd-amd64/spoolie-freebsd-amd64

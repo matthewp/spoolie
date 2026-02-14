@@ -35,6 +35,10 @@ sudo apt install libcups2-dev libncursesw5-dev
 sudo dnf install cups-devel ncurses-devel
 ```
 
+## Install
+
+Pre-built binaries for Linux, macOS, and FreeBSD are available on the [Releases](https://github.com/matthewp/spoolie/releases) page.
+
 ## Build
 
 ```bash

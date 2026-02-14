@@ -2,9 +2,11 @@ CC ?= cc
 CFLAGS += -Wall -Wextra -g
 LDFLAGS +=
 
-# pkg-config for deps (works on Linux and FreeBSD)
-CFLAGS += $(shell pkg-config --cflags cups ncursesw 2>/dev/null || pkg-config --cflags cups ncurses)
-LDFLAGS += $(shell pkg-config --libs cups ncursesw 2>/dev/null || pkg-config --libs cups ncurses) -lpthread
+# pkg-config for deps; fall back to direct flags for macOS
+PKG_CFLAGS != pkg-config --cflags cups ncursesw 2>/dev/null || pkg-config --cflags cups ncurses 2>/dev/null || true
+PKG_LDFLAGS != pkg-config --libs cups ncursesw 2>/dev/null || pkg-config --libs cups ncurses 2>/dev/null || echo "-lcups -lncurses"
+CFLAGS += $(PKG_CFLAGS)
+LDFLAGS += $(PKG_LDFLAGS) -lpthread
 
 SRCS = src/main.c src/ui.c src/cups_api.c src/printers.c src/jobs.c
 OBJS = $(SRCS:.c=.o)
